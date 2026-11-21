@@ -9,17 +9,18 @@
     "check": "node --experimental-strip-types scripts/cadence.check.ts && node --experimental-strip-types scripts/netlist.check.ts && node --experimental-strip-types scripts/deweb.check.ts && node --experimental-strip-types scripts/tapeout.check.ts"
   },
   "dependencies": {
+    "@fontsource-variable/onest": "5.1.0",
+    "@fontsource/young-serif": "5.1.0",
+    "framer-motion": "11.11.9",
     "next": "14.2.15",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "framer-motion": "11.11.9",
-    "@fontsource/young-serif": "5.1.0",
-    "@fontsource-variable/onest": "5.1.0"
+    "viem": "^2.58.4"
   },
   "devDependencies": {
-    "typescript": "5.6.3",
-    "@types/react": "18.3.11",
     "@types/node": "22.7.5",
-    "@types/react-dom": "18.3.1"
+    "@types/react": "18.3.11",
+    "@types/react-dom": "18.3.1",
+    "typescript": "5.6.3"
   }
 }

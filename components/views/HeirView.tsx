@@ -3,58 +3,71 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AppShell } from '@/components/AppShell';
 import { MiniGate } from '@/components/MiniGate';
-import { fmt, missedOf, useVault } from '@/lib/store';
+import { PickVault } from '@/components/PickVault';
+import { explain } from '@/lib/chain';
+import { fmt, missedOf, useVault, Vault } from '@/lib/store';
+import { useWallet } from '@/lib/wallet';
 
 export function HeirView() {
-  return <AppShell><Claim /></AppShell>;
+  return (
+    <AppShell>
+      <PickVault role="heir" none="This wallet is not named in a gate.">
+        {vault => <Claim vault={vault} />}
+      </PickVault>
+    </AppShell>
+  );
 }
 
-function Claim() {
-  const { vault, claim } = useVault();
-  const [who, setWho] = useState(0);
-  const [flying, setFlying] = useState(false);
-  const h = vault.heirs[who];
+function Claim({ vault }: { vault: Vault }) {
+  const { account } = useWallet();
+  const { claim } = useVault();
+  const h = vault.heirs.find(x => account && x.addr.toLowerCase() === account.toLowerCase()) || vault.heirs[0];
   const share = h.bps / 10000;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   const timeline = [
-    { label: `${vault.owner} is checking in`, done: true, now: vault.state === 0 },
+    { label: 'The owner is checking in', done: true, now: vault.state === 0 },
     { label: 'Guardians alerted, waiting period running', done: vault.state >= 1, now: vault.state === 1 },
     { label: 'Ready to claim', done: vault.state >= 2, now: vault.state === 2 && !h.claimed },
     { label: 'Your share is in your wallet', done: h.claimed, now: h.claimed },
   ];
 
-  const doClaim = () => { setFlying(true); setTimeout(() => { claim(who); setFlying(false); }, 1400); };
+  const doClaim = async () => {
+    setBusy(true);
+    setError('');
+    try { await claim(vault.id); }
+    catch (e) { setError(explain(e)); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="cl">
-      <div className="cl-who">
-        <span className="small muted">Demo: viewing as</span>
-        {vault.heirs.map((x, n) => <button key={n} className={`chip ${n === who ? 'on' : ''}`} onClick={() => setWho(n)}>{x.name}</button>)}
-      </div>
-
       <section className="cl-hero">
         <div className="cl-art">
           <MiniGate state={vault.state} progress={vault.state === 0 ? 1 : 0.2} size={230} coins={!h.claimed} />
           <AnimatePresence>
-            {flying && [0, 1, 2, 3, 4].map(n => (
+            {busy && [0, 1, 2, 3, 4].map(n => (
               <motion.span key={n} className="fly" initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
                 animate={{ x: 160 + n * 8, y: -60 - n * 20, opacity: 0, scale: 0.6 }} transition={{ duration: 1.1, delay: n * 0.08, ease: 'easeOut' }} />
             ))}
           </AnimatePresence>
         </div>
         <div className="cl-copy">
-          <h1>{h.name}, {vault.owner} named you in their gate.</h1>
-          <p className="lead">You will receive <b>{h.bps / 100}%</b> of everything in it. {vault.state === 0 && `There is nothing to do while ${vault.owner} is checking in.`}{vault.state === 1 && `${vault.owner} has missed ${missedOf(vault)} check-ins and the guardians have been alerted. If ${vault.owner} checks in, this stops.`}</p>
-          {vault.state === 2 && !h.claimed && <button className="btn sun big" onClick={doClaim} disabled={flying}>{flying ? 'Claiming…' : `Claim my ${h.bps / 100}%`}</button>}
-          {h.claimed && <p className="ok">Claimed. Your share is in your wallet.</p>}
+          <h1>You are named in gate {vault.id}.</h1>
+          <p className="lead">You receive <b>{h.bps / 100}%</b> of everything in it. {vault.state === 0 && 'There is nothing to do while the owner is checking in.'}{vault.state === 1 && `The owner has missed ${missedOf(vault)} check-ins and the guardians have been alerted. If they check in, this stops.`}</p>
+          {vault.state === 2 && !h.claimed && <button className="btn sun big" onClick={doClaim} disabled={busy}>{busy ? 'Claiming…' : `Claim ${h.bps / 100}%`}</button>}
+          {h.claimed && <p className="ok">Claimed. The shares were sent.</p>}
+          {error && <p className="warn-line">{error}</p>}
         </div>
       </section>
 
       <div className="cl-grid">
         <section className="panel">
           <h2>Your share</h2>
+          {vault.assets.length === 0 && <p className="muted">The gate wallet is empty.</p>}
           <ul className="assets">
-            {vault.assets.map(a => <li key={a.sym}><span>{a.sym}</span><b>{fmt(a.amount * share)}</b></li>)}
+            {vault.assets.map(a => <li key={a.sym + (a.token || '')}><span>{a.sym}</span><b>{fmt(a.amount * share)}</b></li>)}
           </ul>
         </section>
         <section className="panel">
@@ -64,20 +77,17 @@ function Claim() {
           </ol>
         </section>
         <section className="panel wide">
-          <h2>New to crypto?</h2>
+          <h2>Claiming</h2>
           <ol className="newbie">
-            <li>Create a free wallet. Your page shows you how, step by step.</li>
-            <li>Paste your wallet address here, or sign in with the email {vault.owner} used for you.</li>
-            <li>When the gate is ready, press claim. Your share arrives in one transaction.</li>
+            <li>Connect the wallet whose address was named as an heir.</li>
+            <li>When the guardians have approved and the wait is over, the claim button appears.</li>
+            <li>One transaction pays every heir their share. You pay the network fee for that send.</li>
           </ol>
         </section>
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: `
         .cl { display: grid; gap: 24px; }
-        .cl-who { display: flex; align-items: center; gap: 8px; }
-        .chip { border: 1.5px solid var(--line); background: none; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 520; }
-        .chip.on { background: var(--pine); color: var(--paper); border-color: var(--pine); }
         .cl-hero { display: grid; grid-template-columns: auto 1fr; gap: 44px; align-items: center; background: #f3effc; border: 1px solid #d9cdf6; border-radius: 220px 36px 36px 220px; padding: 34px 44px 34px 36px; }
         .cl-art { position: relative; }
         .fly { position: absolute; left: 50%; top: 70%; width: 22px; height: 22px; border-radius: 50%; background: var(--marigold); border: 3px solid var(--marigold-soft); }
@@ -86,6 +96,7 @@ function Claim() {
         .lead { font-size: 1.1rem; max-width: 34em; }
         .btn.big { min-height: 60px; padding: 0 34px; font-size: 1.1rem; }
         .ok { color: #2f7d47; font-weight: 600; }
+        .warn-line { color: var(--alert); }
         .cl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 22px; padding: 26px; display: grid; gap: 14px; align-content: start; }
         .panel.wide { grid-column: 1 / -1; }

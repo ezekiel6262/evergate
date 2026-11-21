@@ -3,30 +3,67 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AppShell } from '@/components/AppShell';
 import { MiniGate } from '@/components/MiniGate';
-import { dayLabel, fmt, missedOf, useVault } from '@/lib/store';
+import { PickVault } from '@/components/PickVault';
+import { fmt, missedOf, nextCheckIn, useVault, Vault, whenLabel } from '@/lib/store';
 import { stateCopy } from '@/lib/circuit';
+import { explain } from '@/lib/chain';
 import { RulePlain, ShareBar } from '@/components/VaultBits';
+import { parseUnits } from 'viem';
 
 export function GateView() {
-  return <AppShell><Owner /></AppShell>;
+  return (
+    <AppShell>
+      <PickVault role="owner" none="This wallet has no gate on X Layer.">
+        {vault => <Owner vault={vault} />}
+      </PickVault>
+    </AppShell>
+  );
 }
 
-function Owner() {
-  const { vault, checkIn } = useVault();
+function Owner({ vault }: { vault: Vault }) {
+  const { checkIn, withdraw } = useVault();
   const [toast, setToast] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [taking, setTaking] = useState('');
   const missed = missedOf(vault);
-  const nextDue = vault.lastCheckIn + vault.intervalDays * (missed + 1);
-  const progress = vault.state === 0 ? Math.max(0.04, 1 - ((vault.day - vault.lastCheckIn) % vault.intervalDays) / vault.intervalDays) * (1 - missed / (vault.missesAllowed + 1)) : vault.state === 1 ? 0.08 : 1;
+  const nextDue = nextCheckIn(vault);
+  const progress = vault.state === 0 ? Math.max(0.04, 1 - (missed / (vault.missesAllowed + 1))) : vault.state === 1 ? 0.08 : 1;
   const sc = stateCopy[vault.state];
 
-  const doCheck = () => {
-    const wasAlert = vault.state === 1;
-    checkIn();
-    setToast(wasAlert ? 'Alert cancelled. Your guardians have been told you are fine.' : `Checked in. Next check-in by ${dayLabel(vault.day + vault.intervalDays)}.`);
-    setTimeout(() => setToast(''), 3800);
+  const note = (text: string) => {
+    setToast(text);
+    setTimeout(() => setToast(''), 5000);
   };
 
-  const headline = { 0: `All good, ${vault.owner}.`, 1: 'Your guardians have been alerted.', 2: 'Your gate is open for your heirs.', 3: 'Your gate has been handed on.' }[vault.state];
+  const doCheck = async () => {
+    const wasAlert = vault.state === 1;
+    setBusy(true);
+    try {
+      await checkIn(vault.id);
+      note(wasAlert ? 'Alert cancelled.' : `Checked in. Next check-in by ${whenLabel(nextDue)}.`);
+    } catch (e) {
+      note(explain(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doWithdraw = async () => {
+    setBusy(true);
+    try {
+      const amount = parseUnits(taking || '0', 18);
+      if (amount <= 0n) throw new Error('Enter an OKB amount.');
+      await withdraw(vault.id, null, amount);
+      setTaking('');
+      note('Withdrawn to your wallet.');
+    } catch (e) {
+      note(explain(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const headline = { 0: 'All good.', 1: 'Your guardians have been alerted.', 2: 'Your gate is open for your heirs.', 3: 'Your gate has been handed on.' }[vault.state];
 
   return (
     <div className="dash">
@@ -35,13 +72,13 @@ function Owner() {
         <div className="status-copy">
           <span className={`pill ${sc.tone}`}><span className="dot" />{sc.name}</span>
           <h1>{headline}</h1>
-          {vault.state === 0 && <p className="lead">Next check-in by <b>{dayLabel(nextDue)}</b>. {missed > 0 ? `You have missed ${missed} of ${vault.missesAllowed} allowed.` : 'You are up to date.'}</p>}
-          {vault.state === 1 && <p className="lead">You missed {missed} check-ins, so on {dayLabel(vault.alertDay ?? vault.day)} your guardians and heirs got a message. Nothing has moved. If you are reading this, check in to cancel.</p>}
-          {vault.state === 2 && <p className="lead">Your guardians approved and the waiting period ended. Your heirs can now claim their shares.</p>}
-          {vault.state === 3 && <p className="lead">Every heir has claimed. This gate is closed for good.</p>}
+          {vault.state === 0 && <p className="lead">Next check-in by <b>{whenLabel(nextDue)}</b>. {missed > 0 ? `You have missed ${missed} of ${vault.missesAllowed} allowed.` : 'You are up to date.'}</p>}
+          {vault.state === 1 && <p className="lead">You missed {missed} check-ins{vault.alertAt ? `, starting ${whenLabel(vault.alertAt)}` : ''}. Nothing has moved. Check in to cancel.</p>}
+          {vault.state === 2 && <p className="lead">Your guardians approved and the waiting period ended. Anyone can send the shares to your heirs.</p>}
+          {vault.state === 3 && <p className="lead">The shares have been paid. This gate is closed for good.</p>}
           {vault.state < 2 && (
-            <button className="btn sun here" onClick={doCheck}>
-              {vault.state === 1 ? "I'm here, cancel the alert" : "I'm here"}
+            <button className="btn sun here" onClick={doCheck} disabled={busy}>
+              {busy ? 'Waiting for your wallet…' : vault.state === 1 ? "I'm here, cancel the alert" : "I'm here"}
             </button>
           )}
           <AnimatePresence>
@@ -56,15 +93,21 @@ function Owner() {
         <section className="panel">
           <div className="panel-h"><h2>In your gate</h2><span className="small muted">Held in the gate&apos;s own wallet</span></div>
           <ul className="assets">
+            {vault.assets.length === 0 && <li>Nothing in the gate yet. Send OKB or a token to the wallet below.</li>}
             {vault.assets.map(a => (
-              <li key={a.sym}><span className="tok" style={{ background: a.color }} aria-hidden>{a.sym[0]}</span><span>{a.sym}</span><b>{fmt(a.amount)}</b></li>
+              <li key={a.sym + (a.token || '')}><span className="tok" style={{ background: a.color }} aria-hidden>{a.sym[0]}</span><span>{a.sym}</span><b>{fmt(a.amount)}</b></li>
             ))}
           </ul>
-          <p className="small muted wallet">Wallet {vault.wallet.slice(0, 8)}…{vault.wallet.slice(-6)}</p>
+          <p className="small muted wallet">Wallet {vault.wallet}</p>
           <div className="row-btns">
-            <button className="btn sm ghost" disabled={vault.state > 0} onClick={() => { setToast('Deposits go straight to the gate wallet address above.'); setTimeout(() => setToast(''), 3000); }}>Add funds</button>
-            <button className="btn sm ghost" disabled={vault.state > 0} onClick={() => { setToast('Withdrawals are available while your gate is all good.'); setTimeout(() => setToast(''), 3000); }}>Withdraw</button>
+            <button className="btn sm ghost" onClick={() => { void navigator.clipboard?.writeText(vault.wallet); note('Gate wallet copied. Send funds to that address.'); }}>Copy wallet</button>
           </div>
+          {vault.state === 0 && (
+            <div className="row-btns">
+              <input className="input" inputMode="decimal" placeholder="OKB to withdraw" aria-label="OKB to withdraw" value={taking} onChange={e => setTaking(e.target.value)} />
+              <button className="btn sm ghost" disabled={busy} onClick={doWithdraw}>Withdraw</button>
+            </div>
+          )}
         </section>
 
         <section className="panel">
@@ -72,9 +115,9 @@ function Owner() {
           <ShareBar heirs={vault.heirs} />
           <ul className="people">
             {vault.heirs.map((h, i) => (
-              <li key={h.name}><span className="av" style={{ background: i ? 'var(--marigold-soft)' : 'var(--lilac)' }}>{h.name[0]}</span>
-                <div><b>{h.name}</b><small>{h.note}, {h.addr}</small></div>
-                <span className="share">{h.bps / 100}%{h.claimed ? ', claimed' : ''}</span></li>
+              <li key={h.addr}><span className="av" style={{ background: i ? 'var(--marigold-soft)' : 'var(--lilac)' }}>{h.addr.slice(2, 4)}</span>
+                <div><b>{h.name}</b><small>{h.addr}</small></div>
+                <span className="share">{h.bps / 100}%{h.claimed ? ', paid' : ''}</span></li>
             ))}
           </ul>
         </section>
@@ -83,24 +126,24 @@ function Owner() {
           <div className="panel-h"><h2>Guardians</h2><span className="small muted">{vault.quorum} of {vault.guardians.length} must approve</span></div>
           <ul className="people">
             {vault.guardians.map(g => (
-              <li key={g.name}><span className="av">{g.name[0]}</span>
-                <div><b>{g.name}</b><small>{g.note}, {g.addr}</small></div>
+              <li key={g.addr}><span className="av">{g.addr.slice(2, 4)}</span>
+                <div><b>{g.name}</b><small>{g.addr}</small></div>
                 <span className={`share ${g.approved ? 'ok' : ''}`}>{g.approved ? 'Approved' : vault.state === 1 ? 'Alerted' : 'Standing by'}</span></li>
             ))}
           </ul>
         </section>
 
         <section className="panel">
-          <div className="panel-h"><h2>Your rule</h2><a href="#public" className="small">See the public page</a></div>
+          <div className="panel-h"><h2>Your rule</h2><a href={`#public`} className="small">See the public page</a></div>
           <RulePlain v={vault} />
-          <p className="small muted">You can change this plan while you are checking in. Once an alert starts, it stays until you check in. Nobody else can change it, including Evergate.</p>
+          <p className="small muted">You can change this plan while you are checking in. Once an alert starts, it stays until you check in. Nobody else can change it, including Evergate. Rule {vault.circuitId}.</p>
         </section>
 
         <section className="panel wide">
           <div className="panel-h"><h2>Activity</h2></div>
           <ol className="log">
-            {vault.log.slice(0, 8).map((l, i) => (
-              <li key={i} className={l.kind}><span className="log-d">{dayLabel(l.day)}</span><span>{l.text}</span></li>
+            {vault.log.map((l, i) => (
+              <li key={i} className={l.kind}><span className="log-d">{whenLabel(l.at)}</span><span>{l.text}</span></li>
             ))}
           </ol>
         </section>
@@ -124,12 +167,13 @@ function Owner() {
         .assets, .people, .log { list-style: none; margin: 0; padding: 0; display: grid; }
         .assets li { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
         .tok { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--paper); font-weight: 700; font-size: .8rem; }
-        .wallet { font-variant-numeric: tabular-nums; }
-        .row-btns { display: flex; gap: 8px; }
+        .wallet { font-variant-numeric: tabular-nums; word-break: break-all; }
+        .row-btns { display: flex; gap: 8px; align-items: center; }
+        .row-btns .input { max-width: 180px; }
         .people li { display: grid; grid-template-columns: 38px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
         .people li div { display: grid; }
-        .people small { color: var(--moss); font-size: .8rem; }
-        .av { width: 36px; height: 36px; border-radius: 50%; background: var(--lichen); display: grid; place-items: center; font-weight: 650; color: var(--pine); }
+        .people small { color: var(--moss); font-size: .8rem; word-break: break-all; }
+        .av { width: 36px; height: 36px; border-radius: 50%; background: var(--lichen); display: grid; place-items: center; font-weight: 650; color: var(--pine); text-transform: uppercase; }
         .share { font-weight: 600; font-size: .92rem; color: var(--pine); }
         .share.ok { color: #2f7d47; }
         .log li { display: grid; grid-template-columns: 130px 1fr; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); }

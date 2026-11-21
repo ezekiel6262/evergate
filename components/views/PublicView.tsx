@@ -5,42 +5,77 @@ import { AppShell } from '@/components/AppShell';
 import { MiniGate } from '@/components/MiniGate';
 import { RulePlain } from '@/components/VaultBits';
 import { bitGroups, packInputs, stateCopy, step } from '@/lib/circuit';
-import { dayLabel, inputsOf, useVault } from '@/lib/store';
+import { explain, shortAddr } from '@/lib/chain';
+import { inputsOf, useVault, Vault, whenLabel } from '@/lib/store';
 
 export function PublicView() {
   return <AppShell><Page /></AppShell>;
 }
 
 function Page() {
-  const { vault } = useVault();
+  const { load, keeper } = useVault();
+  const [id, setId] = useState('');
+  const [vault, setVault] = useState<Vault | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [ran, setRan] = useState(0);
+
+  const open = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      if (!/^\d+$/.test(id) || id === '0') throw new Error('Enter the gate number.');
+      setVault(await load(id));
+    } catch (e) {
+      setVault(null);
+      setError(explain(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <article className="pr">
+      <form className="addr" onSubmit={e => { e.preventDefault(); void open(); }}>
+        <label className="addr-url" htmlFor="gate-no">Gate number</label>
+        <input id="gate-no" className="input" inputMode="numeric" value={id} onChange={e => setId(e.target.value)} placeholder="1" />
+        <button className="btn sm" disabled={busy || !keeper}>{busy ? 'Reading…' : 'Read the rule'}</button>
+      </form>
+      {!keeper && <p>No Evergate contract is saved in this browser yet. Set one up, then come back with its gate number.</p>}
+      {error && <p className="warn-line">{error}</p>}
+      {vault && <Rule vault={vault} ran={ran} again={() => setRan(r => r + 1)} />}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .pr { display: grid; gap: 28px; }
+        .addr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 8px 10px 8px 16px; }
+        .addr .input { max-width: 160px; }
+        .warn-line { color: var(--alert); }
+      ` }} />
+    </article>
+  );
+}
+
+function Rule({ vault, ran, again }: { vault: Vault; ran: number; again: () => void }) {
   const inputs = inputsOf(vault);
   const out = step(vault.state, inputs);
   const bits = packInputs(inputs);
   const sc = stateCopy[vault.state];
   let off = 0;
-
   const facts = [
     ['Rule number', vault.circuitId],
     ['Network', 'X Layer, chain 196'],
-    ['Gate wallet', `${vault.wallet.slice(0, 10)}…${vault.wallet.slice(-6)}`],
-    ['Guardians', vault.guardians.map(g => g.name).join(', ')],
-    ['Heirs', vault.heirs.map(h => `${h.name} ${h.bps / 100}%`).join(', ')],
-    ['Created', dayLabel(0)],
+    ['Gate wallet', vault.wallet],
+    ['Guardians', vault.guardians.map(g => shortAddr(g.addr)).join(', ')],
+    ['Heirs', vault.heirs.map(h => `${shortAddr(h.addr)} ${h.bps / 100}%`).join(', ')],
+    ['Last check-in', whenLabel(vault.lastCheckIn)],
   ];
 
   return (
-    <article className="pr">
-      <div className="addr">
-        <span className="addr-url"><Lock />{vault.page}</span>
-        <span className="addr-ok"><Shield />Every byte of this page matches its onchain hash</span>
-      </div>
-
+    <>
       <header className="pr-head">
         <MiniGate state={vault.state} progress={vault.state === 0 ? 1 : 0.15} size={200} />
         <div>
           <p className="muted">Public rule page</p>
-          <h1>{vault.owner}&apos;s gate</h1>
+          <h1>Gate {vault.id}</h1>
           <span className={`pill ${sc.tone}`}><span className="dot" />{sc.name}</span>
           <p className="pr-plain">{publicPlain(vault.owner, vault.state)}</p>
         </div>
@@ -62,9 +97,9 @@ function Page() {
           <div className="rc-head">
             <div>
               <h2>Recompute it yourself</h2>
-              <p className="muted">Runs the same step the rule runs onchain, with today&apos;s inputs. It costs nothing and needs no account. The misses allowed and the quorum are fixed in the rule. The keeper only sends the bits that can change.</p>
+              <p className="muted">Runs the same step the rule runs onchain, with the inputs the keeper would send now. It costs nothing. The misses allowed and the quorum are fixed in the rule.</p>
             </div>
-            <button className="btn" onClick={() => setRan(r => r + 1)}>Recompute now</button>
+            <button className="btn" onClick={again}>Recompute now</button>
           </div>
           <motion.div key={ran} className="rc" initial={ran ? { opacity: 0.3 } : false} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
             <div className="rc-col">
@@ -91,19 +126,20 @@ function Page() {
         <section className="pr-sec wide heirs-how">
           <h2>If you are an heir</h2>
           <ol>
-            <li>You will get a TapeSend message and an email when the gate is ready.</li>
-            <li>Open this page or the Evergate app and connect a wallet. The app helps you create one.</li>
-            <li>Press claim. Your share of every asset arrives in one transaction.</li>
+            <li>Connect the wallet that was named in this gate.</li>
+            <li>Open the heir page. It only lists gates that name your account.</li>
+            <li>When the gate is ready, press claim. One transaction pays every heir.</li>
           </ol>
-          <p className="small muted">This page is served from X Layer through DeWEB. It keeps working even if Evergate&apos;s own servers do not.</p>
+          <p className="small muted">This page reads the Evergate contract on X Layer. The rule number is the published circuit.</p>
         </section>
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: `
         .pr { display: grid; gap: 28px; }
-        .addr { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 8px 10px 8px 16px; font-size: .9rem; }
-        .addr-url { display: flex; align-items: center; gap: 8px; font-weight: 560; font-variant-numeric: tabular-nums; }
-        .addr-ok { display: flex; align-items: center; gap: 8px; color: #2f7d47; background: #e5f1e7; padding: 4px 12px; border-radius: 999px; }
+        .addr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 8px 10px 8px 16px; font-size: .9rem; }
+        .addr .input { max-width: 140px; }
+        .addr-url { font-weight: 560; }
+        .warn-line { color: var(--alert); }
         .pr-head { display: grid; grid-template-columns: auto 1fr; gap: 40px; align-items: center; }
         .pr-head > div { display: grid; gap: 12px; justify-items: start; }
         .pr-head h1 { font-size: clamp(2.4rem, 4.4vw, 3.6rem); }
@@ -115,7 +151,7 @@ function Page() {
         .facts { margin: 0; display: grid; }
         .facts div { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
         .facts dt { color: var(--moss); }
-        .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+        .facts dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
         .rc-head { display: flex; justify-content: space-between; align-items: end; gap: 20px; flex-wrap: wrap; }
         .rc { display: grid; grid-template-columns: 1fr 120px 1fr; gap: 16px; align-items: center; background: var(--lichen); border-radius: 18px; padding: 24px; }
         .rc-col { display: grid; gap: 10px; }
@@ -137,12 +173,9 @@ function Page() {
           .facts div { grid-template-columns: 1fr; gap: 2px; }
         }
       ` }} />
-    </article>
+    </>
   );
 }
-
-function Lock() { return <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><rect x="2.5" y="6" width="9" height="6.5" rx="1.5" fill="var(--pine)" /><path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="var(--pine)" strokeWidth="1.6" fill="none" /></svg>; }
-function Shield() { return <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M7 1l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V3z" fill="#2f7d47" /><path d="M4.6 7.2l1.7 1.7L9.6 5.6" stroke="#fff" strokeWidth="1.5" fill="none" strokeLinecap="round" /></svg>; }
 
 function publicPlain(owner: string, state: number) {
   return [

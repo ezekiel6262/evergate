@@ -1,170 +1,130 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { checkInPhrase, waitPhrase } from './cadence';
-import { GateState, step, StepInputs } from './circuit';
-import { noticesOnStep } from './notices';
+import { type Address } from 'viem';
+import { asAddress, EXEC_FEE, KEEPER_KEY, TEMPLATE_KEY, keeperAbi, publicClient, xlayer } from './chain';
+import { claimValue, readAll, readVault } from './gates';
+import { Vault } from './vault';
+import { useWallet } from './wallet';
 
-export type Person = { name: string; addr: string; note?: string };
-export type Heir = Person & { bps: number; claimed: boolean };
-export type Guardian = Person & { approved: boolean };
-export type Asset = { sym: string; amount: number; color: string };
-export type LogItem = { day: number; text: string; kind: 'check' | 'alert' | 'approve' | 'claim' | 'setup' | 'cancel' };
-
-export type Vault = {
-  id: string;
-  owner: string;
-  circuitId: string;
-  wallet: string;
-  page: string;
-  assets: Asset[];
-  heirs: Heir[];
-  guardians: Guardian[];
-  intervalDays: number;
-  missesAllowed: number;
-  quorum: number;
-  waitDays: number;
-  day: number;
-  lastCheckIn: number;
-  alertDay: number | null;
-  state: GateState;
-  log: LogItem[];
-};
-
-export const demoVault = (): Vault => ({
-  id: 'ada',
-  owner: 'Ada',
-  circuitId: '2.311.9',
-  wallet: '0x7a3f9e21c08d4b55e1a90f6c2d3b8e4fa1c2c41e',
-  page: 'tape://2.311.9/ada',
-  assets: [
-    { sym: 'USDT0', amount: 12500, color: '#5d7c58' },
-    { sym: 'OKB', amount: 42, color: '#173d31' },
-  ],
-  heirs: [
-    { name: 'Theo', addr: '0x41c2…9a0e', bps: 6000, claimed: false, note: 'Son' },
-    { name: 'June', addr: '0x93be…17d4', bps: 4000, claimed: false, note: 'Daughter' },
-  ],
-  guardians: [
-    { name: 'Sam Ortiz', addr: '0x2d71…c3a8', approved: false, note: 'Brother' },
-    { name: 'Priya Nair', addr: '0x8e05…44b1', approved: false, note: 'Lawyer' },
-    { name: 'Kemi Adeyemi', addr: '0xa61f…0d29', approved: false, note: 'Old friend' },
-  ],
-  intervalDays: 30,
-  missesAllowed: 3,
-  quorum: 2,
-  waitDays: 30,
-  day: 12,
-  lastCheckIn: 0,
-  alertDay: null,
-  state: 0,
-  log: [{ day: 0, text: 'Gate created. Your guardians were sent a welcome.', kind: 'setup' }],
-});
-
-const KEY = 'evergate.vault.v2';
-
-export function missedOf(v: Vault) {
-  return Math.floor((v.day - v.lastCheckIn) / v.intervalDays);
-}
-
-export function inputsOf(v: Vault, ping = false): StepInputs {
-  const ap = v.guardians.map(g => g.approved) as [boolean, boolean, boolean];
-  return {
-    n: v.missesAllowed,
-    k: v.quorum,
-    missed: missedOf(v),
-    ping,
-    approvals: ap,
-    waitElapsed: v.alertDay !== null && v.day - v.alertDay >= v.waitDays,
-    payoutDone: v.heirs.every(h => h.claimed),
-  };
-}
-
-/** Run the circuit until it settles (what a permissionless poke() does). */
-function settle(v: Vault, ping = false): Vault {
-  let cur = { ...v };
-  for (let i = 0; i < 4; i++) {
-    const out = step(cur.state, inputsOf(cur, ping && i === 0));
-    if (out.next === cur.state) break;
-    const prev = cur.state;
-    cur = { ...cur, state: out.next };
-    if (out.next === 1) cur.alertDay = cur.day;
-    if (out.next === 0 && prev === 1) {
-      cur.alertDay = null;
-      cur.guardians = cur.guardians.map(g => ({ ...g, approved: false }));
-    }
-    const mailed = noticesOnStep(prev, out.next, out.alert, {
-      owner: cur.owner,
-      page: cur.page,
-      missesAllowed: cur.missesAllowed,
-      checkIn: checkInPhrase(cur.intervalDays),
-      wait: waitPhrase(cur.waitDays),
-      guardians: cur.guardians.map(g => g.name),
-      heirs: cur.heirs.map(h => h.name),
-    });
-    const seen = new Set<string>();
-    for (const note of mailed) {
-      if (seen.has(note.kind)) continue;
-      seen.add(note.kind);
-      cur.log = [{ day: cur.day, text: note.text, kind: note.kind === 'alerted' ? 'alert' : 'approve' }, ...cur.log];
-    }
-    if (out.next === 3) cur.log = [{ day: cur.day, text: 'Every heir has claimed. Gate handed on.', kind: 'claim' }, ...cur.log];
-  }
-  return cur;
-}
+export type { Asset, Guardian, Heir, LogItem, Vault } from './vault';
+export { fmt, inputsOf, missedOf, nextCheckIn, whenLabel } from './vault';
 
 type Ctx = {
-  vault: Vault;
-  checkIn: () => void;
-  advance: (days: number) => void;
-  approve: (i: number) => void;
-  claim: (i: number) => void;
-  reset: () => void;
-  replace: (v: Vault) => void;
+  vaults: Vault[];
+  loading: boolean;
+  error: string;
+  keeper: Address | null;
+  templateId: bigint | null;
+  refresh: () => Promise<void>;
+  remember: (keeper: Address, templateId: bigint | null) => void;
+  checkIn: (id: string) => Promise<void>;
+  approve: (id: string) => Promise<void>;
+  claim: (id: string) => Promise<void>;
+  withdraw: (id: string, token: Address | null, amount: bigint) => Promise<void>;
+  load: (id: string) => Promise<Vault>;
 };
 
 const VaultCtx = createContext<Ctx | null>(null);
+const ZERO = '0x0000000000000000000000000000000000000000' as Address;
+
+function readSaved(): { keeper: Address | null; templateId: bigint | null } {
+  if (typeof window === 'undefined') return { keeper: null, templateId: null };
+  try {
+    const keeper = asAddress(localStorage.getItem(KEEPER_KEY) || '');
+    const raw = localStorage.getItem(TEMPLATE_KEY) || '';
+    const templateId = /^\d+$/.test(raw) && raw !== '0' ? BigInt(raw) : null;
+    return { keeper, templateId };
+  } catch {
+    return { keeper: null, templateId: null };
+  }
+}
 
 export function VaultProvider({ children }: { children: React.ReactNode }) {
-  const [vault, setVault] = useState<Vault>(demoVault);
+  const { account, wallet } = useWallet();
+  const [keeper, setKeeper] = useState<Address | null>(null);
+  const [templateId, setTemplateId] = useState<bigint | null>(null);
+  const [vaults, setVaults] = useState<Vault[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) setVault(JSON.parse(raw));
-    } catch {}
+    const saved = readSaved();
+    setKeeper(saved.keeper);
+    setTemplateId(saved.templateId);
   }, []);
 
-  const save = useCallback((v: Vault) => {
-    setVault(v);
-    try { localStorage.setItem(KEY, JSON.stringify(v)); } catch {}
+  const refresh = useCallback(async () => {
+    if (!keeper) { setVaults([]); setError(''); return; }
+    setLoading(true);
+    setError('');
+    try {
+      setVaults(await readAll(keeper));
+    } catch (e) {
+      setVaults([]);
+      setError(e instanceof Error ? e.message : 'Could not read X Layer.');
+    } finally {
+      setLoading(false);
+    }
+  }, [keeper]);
+
+  useEffect(() => { void refresh(); }, [refresh, account]);
+
+  const remember = useCallback((next: Address, template: bigint | null) => {
+    setKeeper(next);
+    if (template) setTemplateId(template);
+    try {
+      localStorage.setItem(KEEPER_KEY, next);
+      if (template) localStorage.setItem(TEMPLATE_KEY, template.toString());
+    } catch { /* the gate is on chain either way */ }
   }, []);
+
+  const requireWallet = useCallback(() => {
+    if (!account || !wallet || !keeper) throw new Error('Connect the wallet that owns this gate.');
+    return { account, wallet, keeper };
+  }, [account, wallet, keeper]);
+
+  const wait = async (hash: `0x${string}`) => {
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') throw new Error('The transaction failed.');
+    await refresh();
+  };
 
   const api = useMemo<Ctx>(() => ({
-    vault,
-    checkIn: () => {
-      if (vault.state > 1) return;
-      const wasAlert = vault.state === 1;
-      const v = settle({ ...vault, lastCheckIn: vault.day }, true);
-      v.log = [{ day: v.day, text: wasAlert ? 'You checked in and cancelled the alert.' : 'You checked in.', kind: wasAlert ? 'cancel' : 'check' }, ...v.log];
-      save(v);
+    vaults, loading, error, keeper, templateId, refresh, remember,
+    checkIn: async id => {
+      const w = requireWallet();
+      await wait(await w.wallet.writeContract({
+        address: w.keeper, abi: keeperAbi, functionName: 'checkIn', args: [BigInt(id)], account: w.account, chain: xlayer,
+      }));
     },
-    advance: days => save(settle({ ...vault, day: vault.day + days })),
-    approve: i => {
-      if (vault.state !== 1) return;
-      const guardians = vault.guardians.map((g, j) => (j === i ? { ...g, approved: true } : g));
-      const v = { ...vault, guardians, log: [{ day: vault.day, text: `${vault.guardians[i].name} approved the release.`, kind: 'approve' as const }, ...vault.log] };
-      save(settle(v));
+    approve: async id => {
+      const w = requireWallet();
+      await wait(await w.wallet.writeContract({
+        address: w.keeper, abi: keeperAbi, functionName: 'approve', args: [BigInt(id)], account: w.account, chain: xlayer,
+      }));
     },
-    claim: i => {
-      if (vault.state !== 2) return;
-      const heirs = vault.heirs.map((h, j) => (j === i ? { ...h, claimed: true } : h));
-      const v = { ...vault, heirs, log: [{ day: vault.day, text: `${vault.heirs[i].name} claimed ${vault.heirs[i].bps / 100}%.`, kind: 'claim' as const }, ...vault.log] };
-      save(settle(v));
+    claim: async id => {
+      const w = requireWallet();
+      const vault = vaults.find(v => v.id === id) || await readVault(w.keeper, BigInt(id));
+      const { value } = claimValue(vault);
+      await wait(await w.wallet.writeContract({
+        address: w.keeper, abi: keeperAbi, functionName: 'claim', args: [BigInt(id), EXEC_FEE], value, account: w.account, chain: xlayer,
+      }));
     },
-    reset: () => save(demoVault()),
-    replace: v => save(v),
-  }), [vault, save]);
+    withdraw: async (id, token, amount) => {
+      const w = requireWallet();
+      await wait(await w.wallet.writeContract({
+        address: w.keeper, abi: keeperAbi, functionName: 'withdraw',
+        args: [BigInt(id), token ?? ZERO, w.account, amount, EXEC_FEE],
+        value: EXEC_FEE, account: w.account, chain: xlayer,
+      }));
+    },
+    load: async id => {
+      if (!keeper) throw new Error('No Evergate contract on this browser yet.');
+      return readVault(keeper, BigInt(id));
+    },
+  }), [vaults, loading, error, keeper, templateId, refresh, remember, requireWallet]);
 
   return <VaultCtx.Provider value={api}>{children}</VaultCtx.Provider>;
 }
@@ -175,12 +135,14 @@ export function useVault() {
   return c;
 }
 
-export function dayLabel(day: number) {
-  const base = Date.UTC(2026, 11, 1);
-  const d = new Date(base + day * 864e5);
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+export function owns(v: Vault, account: string) {
+  return v.ownerAddr === account.toLowerCase();
 }
 
-export function fmt(n: number) {
-  return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+export function guards(v: Vault, account: string) {
+  return v.guardians.some(g => g.addr.toLowerCase() === account.toLowerCase());
+}
+
+export function inherits(v: Vault, account: string) {
+  return v.heirs.some(h => h.addr.toLowerCase() === account.toLowerCase());
 }

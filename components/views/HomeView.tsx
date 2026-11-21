@@ -94,27 +94,6 @@ export function HomeView() {
         </section>
 
         {/* In use */}
-        <section className="wrap block">
-          <div className="block-head">
-            <h2>What it looks like in use</h2>
-            <p className="muted measure">Real screens from the app. Setting up takes about five minutes. Checking in takes one tap.</p>
-          </div>
-          <div className="clips">
-            <figure>
-              <div className="browser"><span /><span /><span />
-                <video src="clips/setup.mp4" poster="clips/setup.jpg" autoPlay muted loop playsInline />
-              </div>
-              <figcaption>Setting up a gate: assets, heirs, guardians, the rule, then sign.</figcaption>
-            </figure>
-            <figure>
-              <div className="browser"><span /><span /><span />
-                <video src="clips/lifecycle.mp4" poster="clips/lifecycle.jpg" autoPlay muted loop playsInline />
-              </div>
-              <figcaption>The demo timeline: missed check-ins, guardian approvals, and heirs claiming.</figcaption>
-            </figure>
-          </div>
-        </section>
-
         {/* Outlives us */}
         <section className="outlive">
           <div className="wrap outlive-in">
@@ -154,24 +133,24 @@ export function HomeView() {
         <section id="pricing" className="wrap block">
           <div className="block-head">
             <h2>Pricing</h2>
-            <p className="muted measure">One setup fee covers the onchain costs of creating your gate. The yearly plan keeps reminders and alerts running.</p>
+            <p className="muted measure">You pay the chain. Evergate does not take a fee on top, and the contract has no yearly charge.</p>
           </div>
           <div className="price">
             <div className="price-col">
-              <h3>Setup</h3>
-              <p className="price-n">$49<span> once</span></p>
-              <p className="muted">Publish your rule, open the gate&apos;s wallet, and publish your heirs&apos; page.</p>
+              <h3>Publish the rule</h3>
+              <p className="price-n">0.0013 OKB</p>
+              <p className="muted">Each tape-out. The first gate on a processor publishes the shared rule as well, so that one pays twice.</p>
             </div>
             <div className="price-col featured">
-              <h3>Keeper</h3>
-              <p className="price-n">$79<span> a year</span></p>
-              <p className="muted">Check-in reminders by app, email and TapeSend, guardian management, unlimited plan edits.</p>
+              <h3>Open the wallet</h3>
+              <p className="price-n">0.08 OKB</p>
+              <p className="muted">Opens the gate&apos;s own wallet. Sending assets in is a normal transfer after that.</p>
               <a href="#setup" className="btn">Set up your gate</a>
             </div>
             <div className="price-col">
-              <h3>Treasury</h3>
-              <p className="price-n">From $1,500<span> a year</span></p>
-              <p className="muted">For DAOs and funds: custom quorums, several keys, multi-asset payouts, audit exports.</p>
+              <h3>When heirs claim</h3>
+              <p className="price-n">0.0013 OKB</p>
+              <p className="muted">Attached to each payment the gate wallet makes. The caller pays it. Nothing is kept by Evergate.</p>
             </div>
           </div>
         </section>

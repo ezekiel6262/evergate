@@ -15,15 +15,15 @@ npm run check      # cadence, netlist, the rule page, and the tape-out call
 
 | Hash | View |
 | --- | --- |
-| `#home` | Marketing site with the live film, rule simulator, clips, pricing, FAQ |
+| `#home` | Marketing site with the film, an example rule, chain fees, and the FAQ |
 | `#gate` | Owner dashboard: status, check-in, assets, heirs, guardians, rule, activity |
-| `#setup` | 5-step setup wizard and the "building your gate" sequence |
+| `#setup` | 5-step setup. Creating a gate signs real X Layer transactions |
 | `#guardian` | Guardian view: alert handling and approval |
 | `#heir` | Heir claim flow |
-| `#public` | Public rule page (the DeWEB page) with in-browser recompute |
+| `#public` | Public rule page with in-browser recompute |
 | `#film` | Full-screen film; `?capture=1` exposes `window.__setT(t)` for frame rendering |
 
-The demo timeline panel moves the calendar forward so every state can be shown.
+Connect a wallet on X Layer. There is no sample account and no demo clock. The browser remembers a keeper address you have already published. It does not invent a gate.
 
 ## Where things live
 
@@ -33,7 +33,7 @@ The demo timeline panel moves the calendar forward so every state can be shown.
 - `deweb/`: the static rule page for TapeKit. Relative files only, so it can be published as-is. `npm run check` proves its `step()` matches `lib/circuit.ts`.
 - `lib/tapeout.ts`: encodes a netlist into the `tapeout` call, with the exact X Layer fee. It does not send the transaction.
 - `lib/notices.ts`: the TapeSend texts for a welcome, a check-in reminder, an alert, and a claim. Sending them waits on an opened circuit and gas.
-- `lib/store.tsx`: demo vault state (localStorage). Replace with contract reads and writes (viem) for the real build.
+- `lib/store.tsx`: gates read from the Evergate contract on X Layer. Connect a wallet. There is no sample account.
 - `components/Film.tsx`: the commercial, a pure function of time. Render it to video with Playwright plus ffmpeg (see the brief).
 - `components/MiniGate.tsx`, `components/Logo.tsx`: the gate illustration and the NAND-gate logo mark.
 

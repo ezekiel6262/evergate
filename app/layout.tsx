@@ -3,6 +3,7 @@ import '@fontsource-variable/onest';
 import './globals.css';
 import type { Metadata } from 'next';
 import { VaultProvider } from '@/lib/store';
+import { WalletProvider } from '@/lib/wallet';
 
 export const metadata: Metadata = {
   title: 'Evergate: crypto inheritance that outlives us',
@@ -14,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <VaultProvider>{children}</VaultProvider>
+        <WalletProvider><VaultProvider>{children}</VaultProvider></WalletProvider>
       </body>
     </html>
   );

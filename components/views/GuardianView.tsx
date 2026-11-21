@@ -2,61 +2,84 @@
 import { useState } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { MiniGate } from '@/components/MiniGate';
+import { PickVault } from '@/components/PickVault';
 import { spell } from '@/lib/cadence';
-import { dayLabel, missedOf, useVault } from '@/lib/store';
+import { explain, shortAddr } from '@/lib/chain';
+import { missedOf, useVault, Vault, whenLabel } from '@/lib/store';
+import { useWallet } from '@/lib/wallet';
 
 export function GuardianView() {
-  return <AppShell><Guardian /></AppShell>;
+  return (
+    <AppShell>
+      <PickVault role="guardian" none="This wallet is not a guardian of a gate.">
+        {vault => <Guardian vault={vault} />}
+      </PickVault>
+    </AppShell>
+  );
 }
 
-function Guardian() {
-  const { vault, approve } = useVault();
-  const me = 0; // Sam
-  const g = vault.guardians[me];
+function Guardian({ vault }: { vault: Vault }) {
+  const { account } = useWallet();
+  const { approve } = useVault();
+  const g = vault.guardians.find(x => account && x.addr.toLowerCase() === account.toLowerCase()) || vault.guardians[0];
   const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const approvals = vault.guardians.filter(x => x.approved).length;
-  const waitLeft = vault.alertDay !== null ? Math.max(0, vault.waitDays - (vault.day - vault.alertDay)) : vault.waitDays;
+  const leftSec = vault.alertAt ? vault.alertAt + vault.waitSeconds - vault.now : vault.waitSeconds;
+  const waitLine = leftSec <= 0 ? 'The wait is over.' : leftSec < 86400 ? 'Less than a day of waiting left.' : `${spell(Math.ceil(leftSec / 86400))} of waiting left.`;
+
+  const doApprove = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await approve(vault.id);
+      setConfirm(false);
+    } catch (e) {
+      setError(explain(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="gd">
       <div className="gd-head">
-        <p className="muted">Signed in as {g.name}</p>
+        <p className="muted">Signed in as {account ? shortAddr(account) : g.name}</p>
         <h1>Gates you guard</h1>
       </div>
 
       <article className={`gd-card s${vault.state}`}>
         <MiniGate state={vault.state} progress={vault.state === 0 ? 1 : 0.1} size={170} />
         <div className="gd-body">
-          <h2>{vault.owner}&apos;s gate</h2>
+          <h2>Gate {vault.id}</h2>
 
           {vault.state === 0 && (
             <>
-              <p>Nothing to do. {vault.owner} is checking in. You will get a TapeSend message and an email if {vault.owner} misses {vault.missesAllowed} check-ins.</p>
+              <p>Nothing to do. {vault.owner} is checking in. You will be asked only if {vault.missesAllowed} check-ins are missed.</p>
               <p className="small muted">{missedOf(vault)} of {vault.missesAllowed} check-ins missed so far.</p>
             </>
           )}
 
           {vault.state === 1 && (
             <>
-              <p className="gd-alert">{vault.owner} has missed {missedOf(vault)} check-ins. The alert went out on {dayLabel(vault.alertDay ?? vault.day)}.</p>
+              <p className="gd-alert">{vault.owner} has missed {missedOf(vault)} check-ins{vault.alertAt ? `. The alert started on ${whenLabel(vault.alertAt)}.` : '.'}</p>
               <div className="gd-steps">
-                <p><b>Before you approve,</b> try to reach {vault.owner} by phone or in person. A single check-in from {vault.owner} cancels everything.</p>
-                <p className="small muted">Approving does not send money to you. It lets the heirs claim after the wait. {approvals} of {vault.quorum} approvals so far. {waitLeft === 0 ? 'The wait is over.' : `${spell(waitLeft)} of waiting left.`}</p>
+                <p><b>Before you approve,</b> try to reach {vault.owner} by phone or in person. A single check-in from them cancels everything.</p>
+                <p className="small muted">Approving does not send money to you. It lets the heirs claim after the wait. {approvals} of {vault.quorum} approvals so far. {waitLine}</p>
               </div>
               {g.approved ? <p className="ok">You approved. Thank you.</p> : !confirm
                 ? <button className="btn" onClick={() => setConfirm(true)}>I could not reach {vault.owner}</button>
                 : (
                   <div className="gd-confirm">
-                    <p>Approve the release of {vault.owner}&apos;s gate to {vault.heirs.map(h => h.name).join(' and ')}?</p>
+                    <p>Approve the release of gate {vault.id} to {vault.heirs.map(h => h.name).join(' and ')}?</p>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      <button className="btn" onClick={() => { approve(me); setConfirm(false); }}>Approve release</button>
+                      <button className="btn" disabled={busy} onClick={doApprove}>{busy ? 'Waiting for your wallet…' : 'Approve release'}</button>
                       <button className="btn ghost" onClick={() => setConfirm(false)}>Not yet</button>
                     </div>
                   </div>
                 )}
-              <p className="small muted">Demo: you can also approve as {vault.guardians.slice(1).filter(x => !x.approved).map(x => x.name).join(' or ') || 'nobody else'}.{' '}
-                {vault.guardians.map((x, n) => n > 0 && !x.approved && <button key={n} className="linkish" onClick={() => approve(n)}>Approve as {x.name.split(' ')[0]}</button>)}
-              </p>
+              {error && <p className="warn-line">{error}</p>}
             </>
           )}
 
@@ -64,7 +87,7 @@ function Guardian() {
         </div>
       </article>
 
-      <p className="small muted">Guardians never hold funds and cannot redirect them. <a href="#public">Read {vault.owner}&apos;s rule</a>.</p>
+      <p className="small muted">Guardians never hold funds and cannot redirect them. <a href="#public">Read the rule</a>.</p>
 
       <style dangerouslySetInnerHTML={{ __html: `
         .gd { display: grid; gap: 24px; max-width: 860px; }
@@ -77,8 +100,11 @@ function Guardian() {
         .gd-steps { display: grid; gap: 8px; }
         .gd-confirm { display: grid; gap: 12px; background: var(--paper); padding: 16px; border-radius: 14px; border: 1px solid var(--line); }
         .ok { color: #2f7d47; font-weight: 600; }
-        .linkish { background: none; border: 0; color: var(--pine); text-decoration: underline; cursor: pointer; padding: 0 6px 0 0; font-size: inherit; }
-        @media (max-width: 760px) { .gd-card { grid-template-columns: 1fr; justify-items: center; border-radius: 120px 120px 24px 24px; padding: 28px 20px; } }
+        .warn-line { color: var(--alert); }
+        @media (max-width: 720px) {
+          .gd-card { grid-template-columns: 1fr; justify-items: center; text-align: center; border-radius: 140px 140px 24px 24px; padding: 28px 18px; }
+          .gd-body { justify-items: center; }
+        }
       ` }} />
     </div>
   );

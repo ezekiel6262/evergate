@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { bitGroups, GateState, packInputs, stateCopy, step, StepInputs } from '@/lib/circuit';
 import { MiniGate } from './MiniGate';
 
-const guardianNames = ['Sam', 'Priya', 'Kemi'];
+const guardianNames = ['Guardian 1', 'Guardian 2', 'Guardian 3'];
 
 export function RuleSimulator() {
   const [missed, setMissed] = useState(0);
@@ -34,7 +34,7 @@ export function RuleSimulator() {
   return (
     <div className="sim">
       <div className="sim-ctl">
-        <p className="sim-rule">Rule for this demo: if <b>3</b> check-ins are missed, alert the guardians. Release only when <b>2 of 3</b> approve and the <b>1-month</b> wait is over.</p>
+        <p className="sim-rule">Example rule: if <b>3</b> check-ins are missed, alert the guardians. Release only when <b>2 of 3</b> approve and the <b>1-month</b> wait is over.</p>
 
         <div className="sim-row">
           <span>Check-ins missed</span>

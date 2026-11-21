@@ -1,8 +1,13 @@
 import { checkInPhrase, spell, waitPhrase } from '@/lib/cadence';
+import { shortAddr } from '@/lib/chain';
 import { Heir, Vault } from '@/lib/store';
 
+function who(h: Heir) {
+  return h.addr ? shortAddr(h.addr) : (h.name || 'an heir');
+}
+
 export function RulePlain({ v }: { v: Pick<Vault, 'intervalDays' | 'missesAllowed' | 'quorum' | 'waitDays' | 'guardians' | 'heirs'> }) {
-  const heirs = v.heirs.map(h => `${h.name || 'an heir'} ${h.bps / 100}%`).join(' and ');
+  const heirs = v.heirs.map(h => `${who(h)} ${h.bps / 100}%`).join(' and ');
   const quiet = spell(v.intervalDays * v.missesAllowed);
   return (
     <ol className="rule-plain">
@@ -22,9 +27,9 @@ export function RulePlain({ v }: { v: Pick<Vault, 'intervalDays' | 'missesAllowe
 export function ShareBar({ heirs }: { heirs: Heir[] }) {
   const colors = ['var(--lilac)', 'var(--marigold-soft)', 'var(--moss-soft)', '#b9d0e6'];
   return (
-    <div className="sharebar" role="img" aria-label={heirs.map(h => `${h.name} ${h.bps / 100} percent`).join(', ')}>
+    <div className="sharebar" role="img" aria-label={heirs.map(h => `${who(h)} ${h.bps / 100} percent`).join(', ')}>
       {heirs.map((h, i) => (
-        <span key={i} style={{ flex: h.bps, background: colors[i % colors.length] }}>{h.bps >= 1200 ? `${h.name} ${h.bps / 100}%` : ''}</span>
+        <span key={i} style={{ flex: h.bps, background: colors[i % colors.length] }}>{h.bps >= 1200 ? `${who(h)} ${h.bps / 100}%` : ''}</span>
       ))}
       <style dangerouslySetInnerHTML={{ __html: `
         .sharebar { display: flex; height: 40px; border-radius: 999px; overflow: hidden; gap: 3px; }
