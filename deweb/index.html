@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ada's gate</title>
+  <link rel="stylesheet" href="rule.css">
+</head>
+<body>
+  <main>
+    <p class="addr"><span>Rule page for <b>Ada's gate</b></span><span>Published later at a tape:// address. TapeKit then checks every byte against the hash stored on X Layer.</span></p>
+
+    <header class="hero">
+      <p class="muted">Public rule page</p>
+      <h1>Ada's gate</h1>
+      <span class="pill"><i></i>All good</span>
+      <p class="lead">Ada is checking in. Nothing in this gate can move without Ada.</p>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <h2>The rule, in plain words</h2>
+        <ol>
+          <li>Check in <b>every month</b>.</li>
+          <li>If <b>3</b> check-ins in a row are missed, about <b>3 months</b> of silence, alert the guardians and heirs and start a wait of <b>1 month</b>.</li>
+          <li>A check-in at any point before release cancels the alert.</li>
+          <li>Release only when <b>2 of 3</b> guardians approve and the wait is over.</li>
+          <li>Then pay <b>Theo 60%</b> and <b>June 40%</b> of every asset in the gate.</li>
+        </ol>
+        <p class="small muted">While Ada is checking in, Ada can replace this plan. That publishes a new rule and moves the assets. Nobody else can change it, including Evergate. Once an alert has started, the plan stays until Ada checks in. After the guardians agree and the wait ends, Ada can no longer cancel.</p>
+      </section>
+
+      <section class="card">
+        <h2>Facts</h2>
+        <dl class="facts">
+          <div><dt>Rule number</dt><dd>Assigned when this rule is published on X Layer. The app demo uses 2.311.9 until then.</dd></div>
+          <div><dt>Network</dt><dd>X Layer, chain 196</dd></div>
+          <div><dt>Guardians</dt><dd>Sam Ortiz, Priya Nair, Kemi Adeyemi</dd></div>
+          <div><dt>Heirs</dt><dd>Theo 60%, June 40%</dd></div>
+          <div><dt>Demo assets</dt><dd>OKB and USDT0</dd></div>
+        </dl>
+      </section>
+
+      <section class="card wide">
+        <h2>How the clock becomes two answers</h2>
+        <p>The rule cannot read the clock. EvergateKeeper turns the timestamps into two answers, then asks the rule. That conversion is the whole of it:</p>
+        <pre>missed = 0 when now is at or before the last check-in
+       = the whole intervals since then, and never more than 15
+wait   = true only after an alert has started,
+         and now is at or after that start plus the wait</pre>
+        <p>Intervals and the wait are ordinary lengths of time, counted in seconds. On this gate an interval is 30 days and the wait is 30 days. Three missed check-ins is about three months of silence.</p>
+        <p>The keeper then packs ten bits, least-significant bit first: missed (4 bits), the owner's check-in, the three guardian votes, the wait answer, and whether the payout finished. How many misses are allowed, and how many guardians must agree, are fixed inside this rule. They are not in those ten bits.</p>
+        <p>A worked packing: 3 missed, no check-in, guardians 1 and 3 in favour, the wait elapsed, payout not done. The two bytes are <b>a301</b>.</p>
+      </section>
+
+      <section class="card wide">
+        <div class="row">
+          <div>
+            <h2>Recompute it yourself</h2>
+            <p class="muted">Runs in this page. It costs nothing and contacts no server.</p>
+          </div>
+          <div class="row">
+            <button type="button" id="today">Today's inputs</button>
+            <button type="button" class="ghost" id="missed">Show 3 missed check-ins</button>
+          </div>
+        </div>
+        <div class="bits" id="bits"></div>
+        <div class="outs" id="outs"></div>
+        <p class="small muted" id="packed"></p>
+      </section>
+
+      <section class="card wide">
+        <h2>If you are an heir</h2>
+        <ol>
+          <li>You will get a TapeSend message, and an email, when the gate is ready.</li>
+          <li>Open this page or the Evergate app and connect a wallet. The app helps you create one.</li>
+          <li>Press claim. Your share of every asset arrives in one transaction.</li>
+        </ol>
+        <p class="note">This page complements a will. It is not a will. It keeps working with no Evergate server once it is published on X Layer.</p>
+      </section>
+    </div>
+  </main>
+  <script src="step.js"></script>
+  <script>
+    var names = ['All good', 'Guardians alerted', 'Ready for heirs', 'Handed on'];
+    var groups = [
+      ['missed', 4],
+      ['check-in', 1],
+      ['guardians', 3],
+      ['wait', 1],
+      ['paid', 1]
+    ];
+    var plan = { n: 3, k: 2 };
+    var shown = { missed: 0, ping: false, approvals: [false, false, false], waitElapsed: false, payoutDone: false, state: 0 };
+
+    function mask(approvals) {
+      return (approvals[0] ? 1 : 0) | (approvals[1] ? 2 : 0) | (approvals[2] ? 4 : 0);
+    }
+
+    function bitsOf(s) {
+      var list = [];
+      var m = s.missed;
+      if (m > 15) m = 15;
+      if (m < 0) m = 0;
+      for (var i = 0; i < 4; i++) list.push((m >> i) & 1);
+      list.push(s.ping ? 1 : 0);
+      list.push(s.approvals[0] ? 1 : 0, s.approvals[1] ? 1 : 0, s.approvals[2] ? 1 : 0);
+      list.push(s.waitElapsed ? 1 : 0);
+      list.push(s.payoutDone ? 1 : 0);
+      return list;
+    }
+
+    function render() {
+      var bits = bitsOf(shown);
+      var html = '';
+      var off = 0;
+      for (var g = 0; g < groups.length; g++) {
+        html += '<div class="bitg"><div class="cells">';
+        for (var i = 0; i < groups[g][1]; i++) {
+          var b = bits[off++];
+          html += '<span class="' + (b ? 'on' : '') + '">' + b + '</span>';
+        }
+        html += '</div><small>' + groups[g][0] + '</small></div>';
+      }
+      document.getElementById('bits').innerHTML = html;
+      var out = EvergateStep.step(shown.state, {
+        n: plan.n,
+        k: plan.k,
+        missed: shown.missed,
+        ping: shown.ping,
+        approvals: shown.approvals,
+        waitElapsed: shown.waitElapsed,
+        payoutDone: shown.payoutDone
+      });
+      document.getElementById('outs').innerHTML =
+        '<div><b>' + names[out.next] + '</b><small>next</small></div>' +
+        '<div><b>' + (out.alert ? 'Yes' : 'No') + '</b><small>send alert</small></div>' +
+        '<div><b>' + (out.release ? 'Yes' : 'No') + '</b><small>heirs may claim</small></div>';
+      document.getElementById('packed').textContent =
+        'Keeper bytes ' + EvergateStep.packWrapper(shown.missed, shown.ping, mask(shown.approvals), shown.waitElapsed, shown.payoutDone) + '.';
+    }
+
+    document.getElementById('today').addEventListener('click', function () {
+      shown = { missed: 0, ping: false, approvals: [false, false, false], waitElapsed: false, payoutDone: false, state: 0 };
+      render();
+    });
+    document.getElementById('missed').addEventListener('click', function () {
+      shown = { missed: 3, ping: false, approvals: [false, false, false], waitElapsed: false, payoutDone: false, state: 0 };
+      render();
+    });
+    render();
+  </script>
+</body>
+</html>
