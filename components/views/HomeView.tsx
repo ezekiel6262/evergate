@@ -139,7 +139,7 @@ export function HomeView() {
             <div className="price-col">
               <h3>Publish the rule</h3>
               <p className="price-n">0.0013 OKB</p>
-              <p className="muted">Each tape-out. The first gate on a processor publishes the shared rule as well, so that one pays twice.</p>
+              <p className="muted">Each tape-out. The first gate on a processor publishes the shared rule as well, so that one pays twice. Creating a processor, when you do not already have one, is 0.1 BEM. The parts for the shared rule are 0.02 BEM.</p>
             </div>
             <div className="price-col featured">
               <h3>Open the wallet</h3>

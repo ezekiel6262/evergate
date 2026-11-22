@@ -6,9 +6,9 @@ import { AppShell } from '@/components/AppShell';
 import { MiniGate } from '@/components/MiniGate';
 import { RulePlain, ShareBar } from '@/components/VaultBits';
 import { CHECK_INS, clampDays, clampMisses, earliestDays, MISS_CHOICES, spell, WAITS } from '@/lib/cadence';
-import { asAddress, explain, shortAddr, USDT0 } from '@/lib/chain';
+import { asAddress, BEM_UNIT_LIMIT, bemToken, circuitsAbi, erc20Abi, explain, FACTORY, factoryAbi, publicClient, shortAddr, transistorsAbi, USDT0 } from '@/lib/chain';
 import { walletBalances } from '@/lib/gates';
-import { PublishDraft, PublishStep, publishGate } from '@/lib/publish';
+import { PublishDraft, PublishStep, publishGate, sharedRuleParts } from '@/lib/publish';
 import { fmt, Heir, useVault } from '@/lib/store';
 import { useWallet } from '@/lib/wallet';
 
@@ -57,6 +57,49 @@ function distinct(values: string[]) {
   return seen.size === values.length;
 }
 
+function publishPlan(d: Draft) {
+  const processorSet = !!asAddress(d.processor);
+  const keeperSet = !!asAddress(d.keeper);
+  const circuitSet = /^\d+$/.test(d.circuitId) && d.circuitId !== '0';
+  const templateSet = /^\d+$/.test(d.templateId) && d.templateId !== '0';
+  const willCreate = !processorSet && !keeperSet && !circuitSet && !templateSet;
+  const needsPasted = !processorSet && !keeperSet && (circuitSet || templateSet);
+  const tapes = circuitSet ? 0 : templateSet ? 1 : 2;
+  const needsParts = !circuitSet && !templateSet && sharedRuleParts().calls > 0;
+  return { willCreate, needsPasted, tapes, needsParts, reviewOk: !needsPasted, processorSet, keeperSet };
+}
+
+async function reviewCosts(processor: string) {
+  const token = await bemToken();
+  const decimals = Number(await publicClient.readContract({
+    address: token, abi: erc20Abi, functionName: 'decimals',
+  }).catch(() => 8));
+  const deploy = await publicClient.readContract({ address: FACTORY, abi: factoryAbi, functionName: 'deployFee' });
+  const create = `${formatUnits(deploy, decimals)} BEM`;
+  try {
+    const { calls, units } = sharedRuleParts();
+    const cpu = asAddress(processor);
+    let protocol: bigint;
+    let price: bigint;
+    let inBem = true;
+    if (cpu) {
+      const transistors = await publicClient.readContract({ address: cpu, abi: circuitsAbi, functionName: 'transistors' });
+      [protocol, price] = await Promise.all([
+        publicClient.readContract({ address: transistors, abi: transistorsAbi, functionName: 'protocolFee' }),
+        publicClient.readContract({ address: transistors, abi: transistorsAbi, functionName: 'mintPrice' }),
+      ]);
+      inBem = protocol < BEM_UNIT_LIMIT && price < BEM_UNIT_LIMIT;
+    } else {
+      protocol = await publicClient.readContract({ address: FACTORY, abi: factoryAbi, functionName: 'protocolFee' });
+      price = 0n;
+    }
+    const total = protocol * BigInt(calls) + price * units;
+    return { create, parts: inBem ? `${formatUnits(total, decimals)} BEM` : `${formatUnits(total, 18)} OKB` };
+  } catch {
+    return { create, parts: 'Charged by that processor' };
+  }
+}
+
 export function SetupView() {
   return <AppShell><Wizard /></AppShell>;
 }
@@ -75,9 +118,8 @@ function Wizard() {
     && total === 10000
     && distinct(d.heirs.map(h => h.addr));
   const guardsOk = d.guardians.every(g => asAddress(g)) && distinct(d.guardians);
-  const needsProcessor = !asAddress(d.keeper) || !/^\d+$/.test(d.circuitId);
-  const reviewOk = !needsProcessor || !!asAddress(d.processor);
-  const valid = [true, heirsOk, guardsOk, true, reviewOk][i];
+  const plan = publishPlan(d);
+  const valid = [true, heirsOk, guardsOk, true, plan.reviewOk][i];
 
   useEffect(() => {
     setD(x => ({
@@ -327,7 +369,16 @@ function previewHeirs(d: Draft): Heir[] {
 }
 
 function StepReview({ d, setD }: SP) {
-  const tapes = /^\d+$/.test(d.circuitId) ? 0 : /^\d+$/.test(d.templateId) ? 1 : 2;
+  const plan = publishPlan(d);
+  const [fees, setFees] = useState<{ create: string; parts: string } | null>(null);
+  useEffect(() => {
+    if (!plan.willCreate && !plan.needsParts) return;
+    let stop = false;
+    reviewCosts(d.processor).then(next => { if (!stop) setFees(next); }).catch(() => {
+      if (!stop) setFees({ create: '0.1 BEM', parts: '0.02 BEM' });
+    });
+    return () => { stop = true; };
+  }, [plan.willCreate, plan.needsParts, d.processor]);
   return (
     <>
       <h2>Read your rule once more</h2>
@@ -336,14 +387,19 @@ function StepReview({ d, setD }: SP) {
         <div><h3>The rule</h3><RulePlain v={{ ...d, guardians: d.guardians.map(addr => ({ name: shortAddr(addr), addr, approved: false })), heirs: previewHeirs(d) }} /></div>
         <div>
           <h3>What you will sign</h3>
-          <div className="cost"><span>Publish the rule</span><span>{tapes === 0 ? 'Already published' : `${tapes} × 0.0013 OKB`}</span></div>
+          {plan.willCreate && <div className="cost"><span>Create the processor</span><span>{fees?.create ?? '…'}</span></div>}
+          {plan.needsParts && <div className="cost"><span>Parts for the rule</span><span>{fees?.parts ?? '…'}</span></div>}
+          <div className="cost"><span>Publish the rule</span><span>{plan.tapes === 0 ? 'Already published' : `${plan.tapes} × 0.0013 OKB`}</span></div>
           <div className="cost"><span>Open the gate wallet</span><span>0.08 OKB</span></div>
           <div className="cost"><span>Assets sent in</span><span>{d.assets.filter(a => a.on && a.amount).map(a => `${a.amount} ${a.sym}`).join(', ') || 'None yet'}</span></div>
           <p className="small muted">Each signature is a real transaction on X Layer. Closing the wallet stops the rest.</p>
         </div>
       </div>
       <div className="chain-fields">
-        <div className="field"><label htmlFor="processor">Processor address</label><input id="processor" className="input" placeholder="0x" value={d.processor} onChange={e => setD(x => ({ ...x, processor: e.target.value.trim() }))} /></div>
+        <div className="field"><label htmlFor="processor">Processor address, if you already have one</label><input id="processor" className="input" placeholder={plan.willCreate ? 'Leave blank to create one' : '0x'} value={d.processor} onChange={e => setD(x => ({ ...x, processor: e.target.value.trim() }))} /></div>
+        {plan.willCreate && <p className="small muted">Leave this blank and a processor is created for you.</p>}
+        {plan.needsPasted && <p className="warn-line">That rule number belongs to a processor. Enter its address.</p>}
+        {!plan.willCreate && !plan.needsPasted && !plan.processorSet && plan.keeperSet && <p className="small muted">Blank keeps the processor on your Evergate contract.</p>}
         <div className="field"><label htmlFor="keeper">Evergate contract, if you already published one</label><input id="keeper" className="input" placeholder="Leave blank to publish it" value={d.keeper} onChange={e => setD(x => ({ ...x, keeper: e.target.value.trim() }))} /></div>
         <div className="field"><label htmlFor="template">Shared rule number, if this processor already has one</label><input id="template" className="input" inputMode="numeric" value={d.templateId} onChange={e => setD(x => ({ ...x, templateId: e.target.value.trim() }))} /></div>
         <div className="field"><label htmlFor="circuit">Your rule number, if you already taped this gate</label><input id="circuit" className="input" inputMode="numeric" value={d.circuitId} onChange={e => setD(x => ({ ...x, circuitId: e.target.value.trim() }))} /></div>
@@ -374,7 +430,7 @@ function toPublish(d: Draft): PublishDraft {
   const keeper = asAddress(d.keeper);
   const templateId = /^\d+$/.test(d.templateId) && d.templateId !== '0' ? BigInt(d.templateId) : null;
   const circuitId = /^\d+$/.test(d.circuitId) && d.circuitId !== '0' ? BigInt(d.circuitId) : null;
-  if ((!keeper || !circuitId) && !processor) throw new Error('Enter the processor that will publish this rule.');
+  if (!processor && !keeper && (templateId || circuitId)) throw new Error('Enter the processor that already holds this rule.');
   return {
     processor,
     keeper,

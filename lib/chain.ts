@@ -11,6 +11,15 @@ export const xlayer = defineChain({
 /** Brain-wallet opener. open(address,uint256) costs FEE(), read earlier as 0.08 OKB. */
 export const OPENER: Address = '0x536add8f30f03b69f6fbf29d425a816a0dc50106';
 
+/** TapeOut factory. createCPU pulls deployFee() in BEM. Tape-out itself is still OKB. */
+export const FACTORY: Address = '0x1f09daefa827f02cbb40967cc91b259763760761';
+
+/** BEM on X Layer, the address factory.bem() returned on 2026-11-22. 8 decimals. */
+export const BEM: Address = '0x60e62efa9405d6873c5deabd4e6cc91c25363952';
+
+/** A mint fee below this is BEM units. A larger value is OKB wei from an older processor. */
+export const BEM_UNIT_LIMIT = 10n ** 12n;
+
 /** USDT0 on X Layer, the Tether token named by X Layer. */
 export const USDT0: Address = '0x779Ded0c9e1022225f8E0630b35a9b54bE713736';
 
@@ -40,7 +49,46 @@ export const erc20Abi = [
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
   { type: 'function', name: 'symbol', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
+  { type: 'function', name: 'allowance', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'approve', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'transfer', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
+] as const;
+
+export const factoryAbi = [
+  { type: 'function', name: 'bem', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'deployFee', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'protocolFee', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  {
+    type: 'function', name: 'createCPU', stateMutability: 'payable',
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'story', type: 'string' },
+      { name: 'transistorSupply', type: 'uint256' },
+      { name: 'mintPrice', type: 'uint256' },
+    ],
+    outputs: [{ name: 'transistors', type: 'address' }, { name: 'circuits', type: 'address' }],
+  },
+  {
+    type: 'event', name: 'CPUCreated',
+    inputs: [
+      { name: 'circuits', type: 'address', indexed: true },
+      { name: 'transistors', type: 'address', indexed: true },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'name', type: 'string', indexed: false },
+      { name: 'supply', type: 'uint256', indexed: false },
+      { name: 'mintPrice', type: 'uint256', indexed: false },
+    ],
+  },
+] as const;
+
+export const transistorsAbi = [
+  { type: 'function', name: 'mint', stateMutability: 'payable', inputs: [{ name: 'id', type: 'uint256' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'protocolFee', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'mintPrice', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }, { name: 'id', type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'NAND', stateMutability: 'pure', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'LATCH', stateMutability: 'pure', inputs: [], outputs: [{ type: 'uint256' }] },
 ] as const;
 
 export const openerAbi = [
@@ -53,9 +101,19 @@ export const circuitsAbi = [
   { type: 'function', name: 'nextId', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'owner', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
   { type: 'function', name: 'ownerOf', stateMutability: 'view', inputs: [{ name: 'id', type: 'uint256' }], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'transistors', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
   { type: 'function', name: 'setApprovalForAll', stateMutability: 'nonpayable', inputs: [{ name: 'operator', type: 'address' }, { name: 'approved', type: 'bool' }], outputs: [] },
   { type: 'function', name: 'tapeout', stateMutability: 'payable', inputs: [{ name: 'netlist', type: 'bytes' }, { name: 'nIn', type: 'uint32' }, { name: 'nOut', type: 'uint32' }], outputs: [] },
 ] as const;
+
+/** Live BEM token. Falls back to the address read on 2026-11-22 if bem() reverts. */
+export async function bemToken(): Promise<Address> {
+  try {
+    const token = await publicClient.readContract({ address: FACTORY, abi: factoryAbi, functionName: 'bem' });
+    if (isAddress(token)) return token;
+  } catch { /* factory view missing */ }
+  return BEM;
+}
 
 const heir = [
   { name: 'account', type: 'address' },
