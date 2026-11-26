@@ -47,6 +47,11 @@ export function FilmView() {
         .fp-stage { display: grid; place-items: center; padding: 0 24px; }
         .fp-film { width: min(1400px, 100%); aspect-ratio: 16 / 9; border-radius: 22px; overflow: hidden; }
         .fp-foot { display: flex; justify-content: space-between; align-items: center; padding: 20px 28px; color: var(--moss-soft); gap: 12px; flex-wrap: wrap; }
+        @media (max-width: 520px) {
+          .fp-top, .fp-foot { padding: 14px 16px; }
+          .fp-stage { padding: 0 16px; }
+          .fp-top .btn { padding: 0 12px; }
+        }
         .fp-foot .btn { color: var(--paper); border-color: rgba(247,249,244,.4); }
       ` }} />
     </div>

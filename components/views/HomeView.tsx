@@ -88,7 +88,7 @@ export function HomeView() {
         <section id="try" className="wrap block">
           <div className="block-head">
             <h2>Try the rule yourself</h2>
-            <p className="muted measure">Miss some check-ins, have guardians approve, end the wait. The gate on the right runs the same logic as the circuit onchain.</p>
+            <p className="muted measure">Miss some check-ins, have guardians approve, end the wait. The gate shown here runs the same logic as the circuit onchain.</p>
           </div>
           <RuleSimulator />
         </section>
@@ -237,8 +237,12 @@ export function HomeView() {
           .price-col + .price-col { border-left: 0; border-top: 1px solid var(--line); }
           .hero-window { border-radius: 50% 50% 18px 18px / 22% 22% 18px 18px; margin-top: 36px; }
           .assure { justify-content: flex-start; gap: 14px; flex-direction: column; }
-          .how-list li { grid-template-columns: 32px 1fr; }
+          .how-list li { grid-template-columns: 2rem 1fr; }
+          .how-n { font-size: 1.6rem; }
           .how-icon { display: none; }
+          .outlive { border-radius: 48px 48px 0 0; padding: 72px 0; }
+          .outlive-art { width: 100%; }
+          .final-arch { padding: 72px 20px 48px; border-radius: 160px 160px 24px 24px; }
           .block, .how { padding-top: 96px; }
         }
       ` }} />

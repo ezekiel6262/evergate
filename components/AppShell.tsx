@@ -41,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="shell-main">{children}</main>
       <style dangerouslySetInnerHTML={{ __html: `
         .shell { min-height: 100vh; }
-        .shell-top { position: sticky; top: 0; z-index: 40; background: rgba(230,235,225,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+        .shell-top { position: sticky; top: 0; z-index: 40; background: var(--lichen); border-bottom: 1px solid var(--line); }
         .shell-top-in { width: min(1180px, 100% - 32px); margin: 0 auto; height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
         .shell-actions { display: flex; gap: 8px; align-items: center; }
         .seats { display: flex; gap: 4px; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
@@ -55,9 +55,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         .picks button { border: 1.5px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
         .picks button.on { background: var(--pine); color: var(--paper); border-color: var(--pine); }
         @media (max-width: 820px) {
-          .shell-top-in { height: auto; padding: 10px 0; flex-wrap: wrap; }
-          .seats { order: 3; width: 100%; overflow-x: auto; }
-          .seat { flex: 1; padding: 8px; }
+          .shell-top-in { height: auto; padding: 12px 0 10px; display: grid; grid-template-columns: 1fr auto; gap: 10px 8px; align-items: center; }
+          .seats { grid-column: 1 / -1; width: auto; display: grid; grid-template-columns: 1fr 1fr; border-radius: 16px; }
+          .seat { padding: 10px 8px; }
+          .seat span { font-size: .86rem; white-space: nowrap; }
+          .shell-actions .btn.sm { padding: 0 12px; min-height: 40px; }
         }
       ` }} />
     </div>

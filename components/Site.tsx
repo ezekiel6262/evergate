@@ -26,8 +26,8 @@ export function SiteNav() {
         </button>
       </div>
       <style dangerouslySetInnerHTML={{ __html: `
-        .nav { position: sticky; top: 0; z-index: 50; transition: background .3s, box-shadow .3s; }
-        .nav.is-scrolled { background: rgba(230,235,225,.9); backdrop-filter: blur(10px); box-shadow: 0 1px 0 var(--line); }
+        .nav { position: sticky; top: 0; z-index: 50; background: var(--lichen); transition: box-shadow .3s; }
+        .nav.is-scrolled { background: var(--lichen); box-shadow: 0 1px 0 var(--line); }
         .nav-in { display: flex; align-items: center; justify-content: space-between; height: 76px; }
         .nav-links { display: flex; align-items: center; gap: 28px; }
         .nav-links a:not(.btn) { text-decoration: none; font-weight: 500; color: var(--pine); }
@@ -77,7 +77,6 @@ export function SiteFooter() {
       </div>
       <div className="wrap foot-base">
         <span>Built with TapeOut circuits on X Layer</span>
-        <span>A Synonyms Limited product</span>
       </div>
       <style dangerouslySetInnerHTML={{ __html: `
         .foot { background: var(--pine); color: var(--moss-soft); padding: 72px 0 28px; margin-top: 120px; border-radius: 48px 48px 0 0; }

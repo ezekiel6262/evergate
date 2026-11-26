@@ -235,11 +235,16 @@ function Wizard() {
         @media (max-width: 900px) {
           .wiz { grid-template-columns: 1fr; }
           .wiz-rail { position: static; }
-          .wiz-rail ol { display: flex; overflow-x: auto; }
-          .wiz-rail button { white-space: nowrap; }
+          .wiz-rail ol { display: flex; flex-wrap: wrap; gap: 6px; }
+          .wiz-rail button { white-space: nowrap; padding: 8px 10px; }
+          .wiz-nav { flex-wrap: wrap; }
+          .wiz-nav .btn { text-align: center; }
           .wiz-art { display: none; }
           .wiz-panel { padding: 24px; }
-          .person-card, .summary { grid-template-columns: 1fr; }
+          .person-card { grid-template-columns: 1fr auto; }
+          .person-card .field:first-child { grid-column: 1 / -1; }
+          .person-card.g { grid-template-columns: 1fr; }
+          .summary { grid-template-columns: 1fr; }
           .opt-row { grid-template-columns: auto 1fr; }
           .opt-row .input { grid-column: 1 / -1; }
         }

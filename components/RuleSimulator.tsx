@@ -102,7 +102,7 @@ export function RuleSimulator() {
         .stepper button { width: 42px; height: 40px; border: 0; background: none; cursor: pointer; color: var(--pine); display: grid; place-items: center; }
         .stepper button:disabled { opacity: .3; }
         .stepper output { min-width: 28px; text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; }
-        .chips { display: flex; gap: 8px; }
+        .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         .chip { border: 1.5px solid var(--line); background: none; border-radius: 999px; padding: 7px 14px; cursor: pointer; font-weight: 520; }
         .chip.on { background: var(--pine); border-color: var(--pine); color: var(--paper); }
         .switch { width: 52px; height: 30px; border-radius: 999px; border: 0; background: var(--line); position: relative; cursor: pointer; flex: none; transition: background .2s; }
@@ -124,7 +124,13 @@ export function RuleSimulator() {
         .bitg-cells span { width: 20px; height: 26px; display: grid; place-items: center; border-radius: 5px; background: var(--paper); font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: .85rem; color: var(--moss); }
         .bitg-cells span.one { background: var(--pine); color: var(--marigold-soft); }
         .bitg small { font-size: .75rem; color: var(--moss); }
-        @media (max-width: 900px) { .sim { grid-template-columns: 1fr; } .sim-ctl { padding: 24px; } }
+        @media (max-width: 900px) {
+          .sim { grid-template-columns: 1fr; }
+          .sim-ctl { padding: 22px 18px; }
+          .sim-row { flex-wrap: wrap; align-items: flex-start; }
+          .chips { justify-content: flex-start; }
+          .ladder { justify-content: flex-start; }
+        }
       ` }} />
     </div>
   );

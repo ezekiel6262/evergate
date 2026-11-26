@@ -49,6 +49,11 @@ function Page() {
         .addr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 8px 10px 8px 16px; }
         .addr .input { max-width: 160px; }
         .warn-line { color: var(--alert); }
+        @media (max-width: 860px) {
+          .addr { flex-direction: column; align-items: stretch; border-radius: 22px; padding: 16px; }
+          .addr .input { max-width: none; width: 100%; }
+          .addr .btn { width: 100%; }
+        }
       ` }} />
     </article>
   );
@@ -165,12 +170,15 @@ function Rule({ vault, ran, again }: { vault: Vault; ran: number; again: () => v
         .outs div { background: var(--paper); border-radius: 12px; padding: 12px; display: grid; gap: 2px; }
         .heirs-how ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
         @media (max-width: 860px) {
+          .addr { border-radius: 22px; align-items: stretch; padding: 14px; }
+          .addr .input { max-width: none; flex: 1; min-width: 0; }
           .pr-head { grid-template-columns: 1fr; justify-items: center; text-align: center; }
           .pr-head > div { justify-items: center; }
           .pr-grid { grid-template-columns: 1fr; }
           .rc { grid-template-columns: 1fr; }
           .rc-wire { transform: rotate(90deg); width: 60px; justify-self: center; }
           .facts div { grid-template-columns: 1fr; gap: 2px; }
+          .outs { grid-template-columns: 1fr; }
         }
       ` }} />
     </>

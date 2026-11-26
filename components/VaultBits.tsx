@@ -29,11 +29,13 @@ export function ShareBar({ heirs }: { heirs: Heir[] }) {
   return (
     <div className="sharebar" role="img" aria-label={heirs.map(h => `${who(h)} ${h.bps / 100} percent`).join(', ')}>
       {heirs.map((h, i) => (
-        <span key={i} style={{ flex: h.bps, background: colors[i % colors.length] }}>{h.bps >= 1200 ? `${who(h)} ${h.bps / 100}%` : ''}</span>
+        <span key={i} style={{ flex: h.bps, background: colors[i % colors.length] }}>{h.bps >= 1200 ? <><em>{who(h)} </em>{h.bps / 100}%</> : ''}</span>
       ))}
       <style dangerouslySetInnerHTML={{ __html: `
         .sharebar { display: flex; height: 40px; border-radius: 999px; overflow: hidden; gap: 3px; }
         .sharebar span { display: flex; align-items: center; padding: 0 14px; font-weight: 600; font-size: .9rem; color: var(--ink); white-space: nowrap; overflow: hidden; transition: flex .4s var(--ease); }
+        .sharebar em { font-style: normal; }
+        @media (max-width: 900px) { .sharebar span { justify-content: center; padding: 0 8px; } .sharebar em { display: none; } }
       ` }} />
     </div>
   );
